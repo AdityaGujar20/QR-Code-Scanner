@@ -1,7 +1,8 @@
 FROM python:3.11
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends libzbar0 \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libzbar0 libzbar-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
