@@ -247,8 +247,20 @@ if "authenticated" in st.session_state and st.session_state["authenticated"]:
         labels = list(status_counts.keys())
         sizes = list(status_counts.values())
         
+        # Define color mapping for the pie chart
+        color_map = {
+            "Scanned": "#4CAF50",  # Green for Scanned
+            "Not Scanned": "#FF0000"  # Red for Not Scanned
+        }
+        # Map colors to labels
+        colors = [color_map[label] for label in labels]
+        
+        # Debug: Print labels and colors to verify
+        print("Pie chart labels:", labels)
+        print("Pie chart colors:", colors)
+        
         fig, ax = plt.subplots()
-        ax.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=90, colors=["#4CAF50", "#FF5733"])
+        ax.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=90, colors=colors)
         ax.axis("equal")  # Equal aspect ratio ensures that pie is drawn as a circle.
         
         st.pyplot(fig)
