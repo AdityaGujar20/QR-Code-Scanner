@@ -33,6 +33,8 @@ def verify_qr(qr_code):
     result = cur.fetchone()
     
     if result is None:
+        cur.close()
+        conn.close()
         return "QR Code Not Found"
     elif result[0] == "Not Scanned":
         # Update status to scanned
@@ -54,7 +56,60 @@ def fetch_qr_codes():
     data = cur.fetchall()
     cur.close()
     conn.close()
-    return pd.DataFrame(data, columns=["QR Code", "Status"])
+    
+    # Create a single DataFrame with all data
+    df = pd.DataFrame(data, columns=["QR Code", "Status"])
+    
+    # Debug: Print raw QR Codes to identify issues
+    print("Raw QR Codes:", df['QR Code'].tolist())
+    
+    # Separate into normal tickets (starting with "Ticket-") and VIP tickets (starting with "VIP-Ticket-")
+    normal_tickets = df[df['QR Code'].str.startswith("Ticket-")].copy()
+    vip_tickets = df[df['QR Code'].str.startswith("VIP-Ticket-")].copy()
+    
+    # Function to extract the numerical part and sort
+    def sort_tickets(df, ticket_type):
+        if df.empty:
+            return df
+        # Create a sorting key for the Status column: Scanned (0), Not Scanned (1)
+        df['sort_key_status'] = df['Status'].map({'Scanned': 0, 'Not Scanned': 1})
+        
+        # Extract the numerical part and handle errors
+        def extract_number(qr_code):
+            try:
+                # Remove the appropriate prefix based on ticket type
+                if ticket_type == "VIP":
+                    num_str = qr_code.replace('VIP-Ticket-', '')
+                else:
+                    num_str = qr_code.replace('Ticket-', '')
+                # Debug: Print the extracted string before conversion
+                print(f"Extracted string for {qr_code}: {num_str}")
+                # Convert to int, ensuring it's a valid number
+                return int(num_str)
+            except (ValueError, AttributeError) as e:
+                print(f"Warning: Invalid number in QR Code '{qr_code}' for {ticket_type} ticket: {e}, setting to 0")
+                return 0
+        
+        # Apply the extraction function and debug the results
+        df['sort_key_number'] = df['QR Code'].apply(extract_number)
+        print(f"Extracted numbers for {ticket_type} tickets:", df['sort_key_number'].tolist())
+        
+        # Sort by sort_key_status (to prioritize Scanned) and then by sort_key_number
+        df = df.sort_values(by=['sort_key_status', 'sort_key_number'], ascending=[True, True])
+        
+        # Debug: Print the sorted DataFrame
+        print(f"Sorted DataFrame for {ticket_type} tickets:\n", df[['QR Code', 'Status', 'sort_key_number']].to_string(index=False))
+        
+        # Drop the temporary sort keys
+        df = df.drop(columns=['sort_key_status', 'sort_key_number'])
+        
+        return df
+    
+    # Apply sorting to both DataFrames with appropriate ticket type
+    normal_tickets = sort_tickets(normal_tickets, "Normal")
+    vip_tickets = sort_tickets(vip_tickets, "VIP")
+    
+    return normal_tickets, vip_tickets
 
 # Function to get QR code status counts
 def get_qr_status_counts():
@@ -74,7 +129,10 @@ def scan_qr(image):
         decoded_objects = pyzbar.decode(image)
         
         for obj in decoded_objects:
-            return obj.data.decode("utf-8")
+            qr_content = obj.data.decode("utf-8")
+            # Extract the part before the colon (e.g., "Ticket-1002" from "Ticket-1002:...")
+            qr_code = qr_content.split(":")[0] if ":" in qr_content else qr_content
+            return qr_code
     
     return None
 
@@ -90,22 +148,31 @@ st.markdown("""
 
 st.title("🔍 QR Code Verification System")
 
-# Login Page
-st.sidebar.header("🔐 Login")
-username = st.sidebar.text_input("Username")
-password = st.sidebar.text_input("Password", type="password")
-login_button = st.sidebar.button("Login", key="login")
-logout_button = st.sidebar.button("Logout", key="logout")
+# Sidebar for Login/Logout
+st.sidebar.header("🔐 Authentication")
 
-if logout_button:
-    st.session_state.pop("authenticated", None)
-    st.rerun()
-
-if login_button:
-    if username == USERNAME and password == PASSWORD:
-        st.session_state["authenticated"] = True
-    else:
-        st.sidebar.error("❌ Invalid Credentials")
+# Conditionally render login fields or logout message
+if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
+    # Login form
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type="password")
+    login_button = st.sidebar.button("Login", key="login")
+    
+    if login_button:
+        if username == USERNAME and password == PASSWORD:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.sidebar.error("❌ Invalid Credentials")
+else:
+    # Logout section
+    st.sidebar.success("Logged in as admin")
+    logout_button = st.sidebar.button("Logout", key="logout")
+    
+    if logout_button:
+        # Clear the authenticated state and rerun
+        st.session_state.pop("authenticated", None)
+        st.rerun()
 
 if "authenticated" in st.session_state and st.session_state["authenticated"]:
     tab1, tab2, tab3 = st.tabs(["📸 QR Code Scanner", "📋 QR Code Table", "📊 Statistics"])
@@ -134,8 +201,32 @@ if "authenticated" in st.session_state and st.session_state["authenticated"]:
     
     with tab2:
         st.header("📋 QR Code Status Table")
-        df = fetch_qr_codes()
-        st.dataframe(df.style.applymap(lambda x: "color: green" if x == "Not Scanned" else "color: red", subset=["Status"]))
+        
+        # Fetch the two DataFrames
+        normal_tickets, vip_tickets = fetch_qr_codes()
+        
+        # Define a styling function for the Status column
+        def style_status(status):
+            if status == "Not Scanned":
+                return "color: red"  # Not Scanned in red
+            else:
+                return "color: green"  # Scanned in green
+        
+        # Display Normal Tickets Table
+        st.subheader("Normal Tickets")
+        if not normal_tickets.empty:
+            styled_normal_df = normal_tickets.style.map(style_status, subset=["Status"])
+            st.dataframe(styled_normal_df)
+        else:
+            st.write("No normal tickets found.")
+        
+        # Display VIP Tickets Table
+        st.subheader("VIP Tickets")
+        if not vip_tickets.empty:
+            styled_vip_df = vip_tickets.style.map(style_status, subset=["Status"])
+            st.dataframe(styled_vip_df)
+        else:
+            st.write("No VIP tickets found.")
     
     with tab3:
         st.header("📊 QR Code Status Distribution")
