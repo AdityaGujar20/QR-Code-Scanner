@@ -11,10 +11,10 @@ USERNAME = "admin"
 PASSWORD = "password123"
 
 # Database configuration
-DB_NAME = "qr_data"
+DB_NAME = "qr_data_r7kw"
 DB_USER = "qr_data_user"
-DB_PASSWORD = "XLR4DyJQ44o7k5GctdUmWMcjAzjmZysW"
-DB_HOST = "dpg-cum7dfhu0jms73bl29c0-a.singapore-postgres.render.com"
+DB_PASSWORD = "TOoKXgLEud2SrMgygj1G27hjFPUiIQ4R"
+DB_HOST = "dpg-cvbqbg56l47c73agp5fg-a.singapore-postgres.render.com"
 DB_PORT = "5432"
 
 # Function to connect to the database
